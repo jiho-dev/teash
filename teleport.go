@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -13,11 +14,18 @@ import (
 )
 
 type tshWrapper struct {
-	nodes   Nodes
-	tshPath string
+	nodes         Nodes
+	tshPath       string
+	nodeCacheFile string
 }
 
-func NewTeleport() (Teleport, error) {
+func NewTeleport(cfg *Config) (Teleport, error) {
+	if cfg.Path != "" {
+		path := os.Getenv("PATH")
+		path += ":" + cfg.Path
+		os.Setenv("PATH", path)
+	}
+
 	if demoMode := os.Getenv("TEASH_DEMO"); demoMode != "" {
 		sshPath, _ := exec.LookPath("ssh")
 		if sshPath == "" {
@@ -30,8 +38,9 @@ func NewTeleport() (Teleport, error) {
 		return nil, errors.New("teleport `tsh` command not found")
 	}
 	return &tshWrapper{
-		nodes:   Nodes{},
-		tshPath: tsh,
+		nodes:         Nodes{},
+		tshPath:       tsh,
+		nodeCacheFile: cfg.NodeCacheFile,
 	}, nil
 }
 
@@ -43,7 +52,8 @@ func (t *tshWrapper) Connect(cmd []string) {
 }
 
 func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
-	if len(t.nodes) == 0 || refresh {
+	if t.GetNodesFromCache() == nil && len(t.nodes) > 0 {
+	} else if len(t.nodes) == 0 || refresh {
 		data := []struct {
 			Kind     string `json:"kind"`
 			Metadata struct {
@@ -81,8 +91,40 @@ func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
 				OS:       n.Spec.CmdLabels.Os.Result,
 			})
 		}
+
+		t.SaveNodesToCache()
 	}
+
 	return t.nodes, nil
+}
+
+func (t *tshWrapper) GetNodesFromCache() error {
+	if t.nodeCacheFile == "" {
+		return fmt.Errorf("no file")
+	}
+
+	j, _ := ioutil.ReadFile(t.nodeCacheFile)
+	if len(j) > 0 {
+		err := json.Unmarshal(j, &t.nodes)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *tshWrapper) SaveNodesToCache() {
+	if t.nodeCacheFile == "" {
+		return
+	}
+
+	j, err := json.Marshal(t.nodes)
+	if err != nil {
+		panic(err)
+	}
+
+	err = ioutil.WriteFile(t.nodeCacheFile, j, 0644)
 }
 
 type Nodes []Node
