@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/sanity-io/litter"
+	"github.com/willgorman/teash/iterm2"
 	"golang.org/x/exp/maps"
 )
 
@@ -314,19 +316,118 @@ func (m model) helpView() string {
 	return helpStyle("\n  ↑/↓: Navigate • /: Start search • q: Quit • c: Select column to search • Enter: ssh to selection\n")
 }
 
+func (m model) ColumnIndex(name string) int {
+	for k, v := range m.headers {
+		if v == name {
+			return k
+		}
+	}
+
+	return -1
+}
+
+// show Badge and tab-title of iTerms
+func (m model) SetIterm2Badge(cfg *Config) {
+	if !cfg.Iterm2.Badge.Enable {
+		return
+	}
+
+	bcfg := &cfg.Iterm2.Badge
+	row := m.table.SelectedRow()
+
+	var badge string
+
+	for _, name := range bcfg.Column {
+		idx := m.ColumnIndex(name)
+
+		if idx < len(row) {
+			if badge != "" {
+				badge += ":"
+			}
+
+			badge += row[idx]
+		}
+	}
+
+	if badge != "" {
+		iterm2.PrintBadge(badge)
+	}
+}
+
+func (m model) SetIterm2TabTitle(cfg *Config) {
+	if !cfg.Iterm2.Tab.Enable {
+		return
+	}
+
+	tcfg := &cfg.Iterm2.Tab
+	row := m.table.SelectedRow()
+
+	idx := m.ColumnIndex(tcfg.Title)
+	if idx != -1 {
+		title := row[idx]
+
+		iterm2.PrintHostName()
+		iterm2.PrintTabTitle(title)
+		iterm2.PrintRemoteHostName(title)
+	}
+
+	var c iterm2.RgbColor
+
+	cat3 := m.table.SelectedRow()[5]
+	v, ok := cfg.Iterm2.Tab.Colors[cat3]
+	if !ok {
+		v, _ = cfg.Iterm2.Tab.Colors["default"]
+	}
+
+	if v != 0 {
+		c.Red = int((v & 0xff0000) >> 16)
+		c.Green = int((v & 0x00ff00) >> 8)
+		c.Blue = int(v & 0x0000ff)
+
+		iterm2.PrintTabBGColor(c)
+	}
+}
+
+func ResetIterm2Env() {
+	iterm2.PrintBadge("")
+	iterm2.PrintRemoteHostName("")
+	iterm2.PrintTabTitle("")
+	iterm2.PrintResetTabBGColor()
+}
+
 func main() {
-	var err error
-	nodes, err := NewTeleport()
+	var configFile string
+	var genNodeCache bool
+	flag.StringVar(&configFile, "config", "./teash.yaml", "config file path")
+	flag.BoolVar(&genNodeCache, "nodecache", false, "generate node cache file")
+	flag.Parse()
+
+	ResetIterm2Env()
+
+	cfg := readConfig(configFile)
+	nodes, err := NewTeleport(cfg)
 	if err != nil {
 		panic(err)
+	}
+
+	if genNodeCache {
+		os.Remove(cfg.NodeCacheFile)
+		fmt.Printf("Generating Node cachefile: %v \n", cfg.NodeCacheFile)
+		nodes.GetNodes(false)
+		return
 	}
 
 	f, err := tea.LogToFile("debug.log", "debug")
 	if err != nil {
 		panic(err)
 	}
+
 	log.Println("------------------------------------")
-	defer f.Close()
+	defer func() {
+		log.Println("exit 1")
+		f.Close()
+	}()
+
 	t := table.New(
 		table.WithFocused(true),
 		table.WithHeight(7),
@@ -368,6 +469,11 @@ func main() {
 	if len(model.tshCmd) == 0 {
 		return
 	}
+
+	model.SetIterm2Badge(cfg)
+	model.SetIterm2TabTitle(cfg)
+	// XXX: FIXME
+	//defer ResetIterm2Env()
 
 	nodes.Connect(model.tshCmd)
 }
