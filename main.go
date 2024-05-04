@@ -424,7 +424,6 @@ func main() {
 
 	log.Println("------------------------------------")
 	defer func() {
-		log.Println("exit 1")
 		f.Close()
 	}()
 
