@@ -397,20 +397,27 @@ func ResetIterm2Env() {
 
 func main() {
 	var configFile string
+	var connect string
 	var genNodeCache bool
+
 	flag.StringVar(&configFile, "config", "./teash.yaml", "config file path")
+	flag.StringVar(&connect, "connect", "", "connect the host")
 	flag.BoolVar(&genNodeCache, "nodecache", false, "generate node cache file")
 	flag.Parse()
 
 	ResetIterm2Env()
 
 	cfg := readConfig(configFile)
-	nodes, err := NewTeleport(cfg)
+	nodes, err := NewTeleport(cfg, connect)
 	if err != nil {
 		panic(err)
 	}
 
-	if genNodeCache {
+	if connect != "" {
+		//tshCmd := []string{"tsh", "ssh", connect}
+		//fmt.Printf("Connecting %s ...\n", connect)
+		//nodes.Connect(tshCmd)
+	} else if genNodeCache {
 		os.Remove(cfg.NodeCacheFile)
 		fmt.Printf("Generating Node cachefile: %v \n", cfg.NodeCacheFile)
 		nodes.GetNodes(false)
@@ -442,7 +449,6 @@ func main() {
 		Background(lipgloss.Color("57")).
 		Bold(false)
 	t.SetStyles(s)
-	var m tea.Model
 
 	search := textinput.New()
 
@@ -458,10 +464,30 @@ func main() {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	if m, err = tea.NewProgram(model{
+
+	md := model{
 		table: t, search: search, profile: profile, spinner: spin, teleport: nodes,
-	}).Run(); err != nil {
-		panic(err)
+	}
+
+	var m tea.Model
+
+	if connect != "" {
+		nn, err := nodes.GetNodes(false)
+		if err != nil {
+			panic(err)
+		}
+		md.nodes = nn
+		md.visible = nn
+
+		m1 := md.fillTable()
+		m1.table.SetCursor(0)
+		m1.tshCmd = []string{"tsh", "ssh", connect}
+		m = m1
+	} else {
+		m, err = tea.NewProgram(md).Run()
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	model := m.(model)

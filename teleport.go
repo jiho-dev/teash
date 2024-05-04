@@ -17,9 +17,10 @@ type tshWrapper struct {
 	nodes         Nodes
 	tshPath       string
 	nodeCacheFile string
+	selected      string
 }
 
-func NewTeleport(cfg *Config) (Teleport, error) {
+func NewTeleport(cfg *Config, selected string) (Teleport, error) {
 	if cfg.Path != "" {
 		path := os.Getenv("PATH")
 		path += ":" + cfg.Path
@@ -41,6 +42,7 @@ func NewTeleport(cfg *Config) (Teleport, error) {
 		nodes:         Nodes{},
 		tshPath:       tsh,
 		nodeCacheFile: cfg.NodeCacheFile,
+		selected:      selected,
 	}, nil
 }
 
@@ -93,6 +95,21 @@ func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
 		}
 
 		t.SaveNodesToCache()
+	}
+
+	if t.selected != "" {
+		nodes := Nodes{}
+
+		for _, n := range t.nodes {
+			if n.Hostname == t.selected {
+				nodes = append(nodes, n)
+				break
+			}
+		}
+
+		if len(nodes) > 0 {
+			t.nodes = nodes
+		}
 	}
 
 	return t.nodes, nil
