@@ -413,11 +413,7 @@ func main() {
 		panic(err)
 	}
 
-	if connect != "" {
-		//tshCmd := []string{"tsh", "ssh", connect}
-		//fmt.Printf("Connecting %s ...\n", connect)
-		//nodes.Connect(tshCmd)
-	} else if genNodeCache {
+	if genNodeCache {
 		os.Remove(cfg.NodeCacheFile)
 		fmt.Printf("Generating Node cachefile: %v \n", cfg.NodeCacheFile)
 		nodes.GetNodes(false)
@@ -471,6 +467,7 @@ func main() {
 
 	var m tea.Model
 
+	// connectd the host immediately
 	if connect != "" {
 		nn, err := nodes.GetNodes(false)
 		if err != nil {
