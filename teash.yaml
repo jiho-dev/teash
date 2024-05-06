@@ -5,7 +5,7 @@ iterm2:
   badge:
     enable: true
     column: 
-      - env
+      - Env
       - Hostname
       - IP
   tab:

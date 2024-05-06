@@ -126,7 +126,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// it to handle this message since that adds '/' to the value
 			return m, m.search.Focus()
 		case "enter":
-			m.tshCmd = []string{"tsh", "ssh", m.table.SelectedRow()[0]}
+			m.tshCmd = []string{"tsh", "ssh", m.table.SelectedRow()[2]}
 			return m, tea.Quit
 		}
 	case Nodes:
@@ -355,8 +355,7 @@ func (m model) SetIterm2Badge(cfg *Config) {
 
 	for _, name := range bcfg.Column {
 		idx := m.ColumnIndex(name)
-
-		if idx < len(row) {
+		if idx != -1 && idx < len(row) {
 			if badge != "" {
 				badge += ":"
 			}
@@ -389,8 +388,8 @@ func (m model) SetIterm2TabTitle(cfg *Config) {
 
 	var c iterm2.RgbColor
 
-	cat3 := m.table.SelectedRow()[5]
-	v, ok := cfg.Iterm2.Tab.Colors[cat3]
+	nodeType := m.table.SelectedRow()[1]
+	v, ok := cfg.Iterm2.Tab.Colors[nodeType]
 	if !ok {
 		v, _ = cfg.Iterm2.Tab.Colors["default"]
 	}
