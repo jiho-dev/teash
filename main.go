@@ -111,9 +111,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.search.Prompt = m.headers[col-1] + "> "
 			}
 		case "c":
-			m.columnSelMode = true
+			if !m.searching {
+				m.columnSelMode = true
+			}
 		case "q":
-			return m, tea.Quit
+			if !m.searching {
+				return m, tea.Quit
+			}
 		case "ctrl+c":
 			return m, tea.Quit
 		case "/":
@@ -165,20 +169,26 @@ func (m model) fillTable() model {
 	slices.Sort(labels)
 
 	m.headers = map[int]string{
-		0: "Hostname",
-		1: "IP",
-		2: "OS",
-	}
-	for i, l := range labels {
-		m.headers[i+3] = l
+		0: "Env",
+		1: "Type",
+		2: "Hostname",
+		3: "IP",
+		4: "OS",
 	}
 
-	columns := make([]table.Column, len(labels)+3)
-	columns[0] = table.Column{Title: m.title(m.headers[0], 1), Width: 30}
-	columns[1] = table.Column{Title: m.title(m.headers[1], 2), Width: 16}
-	columns[2] = table.Column{Title: m.title(m.headers[2], 3), Width: 30}
+	margin := len(m.headers)
+	for i, l := range labels {
+		m.headers[i+margin] = l
+	}
+
+	columns := make([]table.Column, len(labels)+margin)
+	columns[0] = table.Column{Title: m.title(m.headers[0], 1), Width: 4}
+	columns[1] = table.Column{Title: m.title(m.headers[1], 2), Width: 12}
+	columns[2] = table.Column{Title: m.title(m.headers[2], 3), Width: 20}
+	columns[3] = table.Column{Title: m.title(m.headers[3], 4), Width: 16}
+	columns[4] = table.Column{Title: m.title(m.headers[4], 5), Width: 30}
 	for i, v := range labels {
-		columns[i+3] = table.Column{Title: m.title(v, i+4), Width: 15}
+		columns[i+margin] = table.Column{Title: m.title(v, i+margin), Width: 10}
 	}
 
 	// TODO: (willgorman) calculate widths by largest value in the column.  but what's the
@@ -187,16 +197,18 @@ func (m model) fillTable() model {
 	rows := []table.Row{}
 	// log.Println("VISIBLE: ", len(m.visible), " ALL: ", len(m.nodes))
 	for _, n := range m.visible {
-		row := make(table.Row, len(labels)+3)
-		row[0] = n.Hostname
-		row[1] = n.IP
-		row[2] = n.OS
+		row := make(table.Row, len(labels)+margin)
+		row[0] = n.Env
+		row[1] = n.NodeType
+		row[2] = n.Hostname
+		row[3] = n.IP
+		row[4] = n.OS
 		for l, v := range n.Labels {
 			idx := slices.Index(labels, l)
 			if idx < 0 {
 				continue
 			}
-			row[idx+3] = v
+			row[idx+margin] = v
 		}
 		rows = append(rows, row)
 	}
@@ -241,7 +253,7 @@ func (m model) filterNodesBySearch() model {
 		txt2node := map[string]Node{}
 		// if no column is selected we'll fuzzy search on all columns
 		for _, n := range m.nodes {
-			allText := n.Hostname + " " + n.IP + " " + n.OS
+			allText := n.Env + " " + n.NodeType + " " + n.Hostname + " " + n.IP + " " + n.OS
 			// these can't be in random map key order because otherwise
 			// the search results will be different
 			labels := sort.StringSlice(maps.Keys(n.Labels))
@@ -253,7 +265,7 @@ func (m model) filterNodesBySearch() model {
 		}
 		sortedNodes := sort.StringSlice(maps.Keys(txt2node))
 		sortedNodes.Sort()
-		// log.Println("SEARCHING: ", m.search.Value(), "IN: ", litter.Sdump(sortedNodes))
+		//log.Println("SEARCHING: ", m.search.Value(), "IN: ", litter.Sdump(sortedNodes))
 		ranks := fuzzy.RankFind(strings.ToLower(m.search.Value()), sortedNodes)
 		sort.Sort(ranks)
 		for _, rank := range ranks {
@@ -266,10 +278,14 @@ func (m model) filterNodesBySearch() model {
 	for _, n := range m.nodes {
 		switch m.columnSel {
 		case 1:
-			txt2nodes[strings.ToLower(n.Hostname)] = append(txt2nodes[strings.ToLower(n.Hostname)], n)
+			txt2nodes[strings.ToLower(n.Env)] = append(txt2nodes[strings.ToLower(n.Env)], n)
 		case 2:
-			txt2nodes[strings.ToLower(n.IP)] = append(txt2nodes[strings.ToLower(n.IP)], n)
+			txt2nodes[strings.ToLower(n.NodeType)] = append(txt2nodes[strings.ToLower(n.NodeType)], n)
 		case 3:
+			txt2nodes[strings.ToLower(n.Hostname)] = append(txt2nodes[strings.ToLower(n.Hostname)], n)
+		case 4:
+			txt2nodes[strings.ToLower(n.IP)] = append(txt2nodes[strings.ToLower(n.IP)], n)
+		case 5:
 			txt2nodes[strings.ToLower(n.OS)] = append(txt2nodes[strings.ToLower(n.OS)], n)
 		default:
 			txt2nodes[strings.ToLower(n.Labels[m.headers[m.columnSel-1]])] = append(txt2nodes[strings.ToLower(n.Labels[m.headers[m.columnSel-1]])], n)
@@ -388,11 +404,21 @@ func (m model) SetIterm2TabTitle(cfg *Config) {
 	}
 }
 
-func ResetIterm2Env() {
+func (m model) ResetIterm2Badge() {
 	iterm2.PrintBadge("")
+}
+
+func (m model) ResetIterm2TabTitle() {
 	iterm2.PrintRemoteHostName("")
 	iterm2.PrintTabTitle("")
 	iterm2.PrintResetTabBGColor()
+}
+
+func generateNodeCache(cfg *Config, tp Teleport) {
+	os.Remove(cfg.NodeCacheFile)
+	fmt.Printf("Generating Node cachefile: %v \n", cfg.NodeCacheFile)
+	tp.GetNodes(false)
+	return
 }
 
 func main() {
@@ -405,8 +431,6 @@ func main() {
 	flag.BoolVar(&genNodeCache, "nodecache", false, "generate node cache file")
 	flag.Parse()
 
-	ResetIterm2Env()
-
 	cfg := readConfig(configFile)
 	nodes, err := NewTeleport(cfg, connect)
 	if err != nil {
@@ -414,9 +438,7 @@ func main() {
 	}
 
 	if genNodeCache {
-		os.Remove(cfg.NodeCacheFile)
-		fmt.Printf("Generating Node cachefile: %v \n", cfg.NodeCacheFile)
-		nodes.GetNodes(false)
+		generateNodeCache(cfg, nodes)
 		return
 	}
 
@@ -447,7 +469,6 @@ func main() {
 	t.SetStyles(s)
 
 	search := textinput.New()
-
 	spin := spinner.New(
 		spinner.WithSpinner(spinner.Ellipsis),
 		spinner.WithStyle(loadingStyle))
@@ -494,8 +515,10 @@ func main() {
 
 	model.SetIterm2Badge(cfg)
 	model.SetIterm2TabTitle(cfg)
-	// XXX: FIXME
-	//defer ResetIterm2Env()
+	defer func() {
+		model.ResetIterm2Badge()
+		model.ResetIterm2TabTitle()
+	}()
 
 	nodes.Connect(model.tshCmd)
 }

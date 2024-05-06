@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -47,10 +48,11 @@ func NewTeleport(cfg *Config, selected string) (Teleport, error) {
 }
 
 func (t *tshWrapper) Connect(cmd []string) {
-	err := syscall.Exec(t.tshPath, cmd, os.Environ())
-	if err != nil {
-		panic(err)
-	}
+	exe := exec.Command(cmd[0], cmd[1:]...)
+	exe.Stdin = os.Stdin
+	exe.Stdout = os.Stdout
+	exe.Stderr = os.Stderr
+	_ = exe.Run()
 }
 
 func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
@@ -86,12 +88,22 @@ func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
 			if n.Kind != "node" {
 				continue
 			}
-			t.nodes = append(t.nodes, Node{
+
+			env := n.Metadata.Labels["env"]
+			nodeType := n.Metadata.Labels["category3"]
+			delete(n.Metadata.Labels, "env")
+			delete(n.Metadata.Labels, "category3")
+
+			newNode := Node{
+				Env:      env,
+				NodeType: nodeType,
 				Labels:   n.Metadata.Labels,
 				Hostname: n.Spec.Hostname,
 				IP:       n.Spec.CmdLabels.Ip.Result,
 				OS:       n.Spec.CmdLabels.Os.Result,
-			})
+			}
+
+			t.nodes = append(t.nodes, newNode)
 		}
 
 		t.SaveNodesToCache()
@@ -111,6 +123,18 @@ func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
 			t.nodes = nodes
 		}
 	}
+
+	// sort them by Env, Type, Hostname
+	sort.Slice(t.nodes, func(i, j int) bool {
+		if t.nodes[i].Env != t.nodes[j].Env {
+			return t.nodes[i].Env < t.nodes[j].Env
+		}
+
+		if t.nodes[i].NodeType != t.nodes[j].NodeType {
+			return t.nodes[i].NodeType < t.nodes[j].NodeType
+		}
+		return t.nodes[i].Hostname < t.nodes[j].Hostname
+	})
 
 	return t.nodes, nil
 }
@@ -147,6 +171,8 @@ func (t *tshWrapper) SaveNodesToCache() {
 type Nodes []Node
 
 type Node struct {
+	Env      string
+	NodeType string
 	Labels   map[string]string
 	Hostname string
 	IP       string
