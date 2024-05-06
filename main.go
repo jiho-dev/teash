@@ -415,7 +415,6 @@ func (m model) ResetIterm2TabTitle() {
 }
 
 func generateNodeCache(cfg *Config, tp Teleport) {
-	os.Remove(cfg.NodeCacheFile)
 	fmt.Printf("Generating Node cachefile: %v \n", cfg.NodeCacheFile)
 	tp.GetNodes(false)
 	return

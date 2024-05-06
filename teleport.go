@@ -19,6 +19,11 @@ type tshWrapper struct {
 	tshPath       string
 	nodeCacheFile string
 	selected      string
+	region        string
+}
+
+type nodeCaches struct {
+	Cache map[string]Nodes // key: env name. ex) lab-eu, spc-kr, spc-us...
 }
 
 func NewTeleport(cfg *Config, selected string) (Teleport, error) {
@@ -39,11 +44,25 @@ func NewTeleport(cfg *Config, selected string) (Teleport, error) {
 	if tsh == "" {
 		return nil, errors.New("teleport `tsh` command not found")
 	}
+
+	tsh_proxy, err := getTshEvn("TELEPORT_PROXY")
+	if err != nil {
+		panic(err)
+
+	}
+
+	prefix := strings.Split(tsh_proxy, "-access")
+	if len(prefix) < 2 {
+		fmt.Printf("TELEPORT_PROXY is not vaild: %s\n", tsh_proxy)
+		panic(nil)
+	}
+
 	return &tshWrapper{
 		nodes:         Nodes{},
 		tshPath:       tsh,
 		nodeCacheFile: cfg.NodeCacheFile,
 		selected:      selected,
+		region:        prefix[0],
 	}, nil
 }
 
@@ -144,12 +163,19 @@ func (t *tshWrapper) GetNodesFromCache() error {
 		return fmt.Errorf("no file")
 	}
 
+	var cache nodeCaches
+
 	j, _ := ioutil.ReadFile(t.nodeCacheFile)
 	if len(j) > 0 {
-		err := json.Unmarshal(j, &t.nodes)
+		err := json.Unmarshal(j, &cache)
 		if err != nil {
 			return err
 		}
+	}
+
+	n, ok := cache.Cache[t.region]
+	if ok {
+		t.nodes = n
 	}
 
 	return nil
@@ -160,7 +186,18 @@ func (t *tshWrapper) SaveNodesToCache() {
 		return
 	}
 
-	j, err := json.Marshal(t.nodes)
+	cache := nodeCaches{
+		Cache: map[string]Nodes{},
+	}
+
+	j, _ := ioutil.ReadFile(t.nodeCacheFile)
+	if len(j) > 0 {
+		json.Unmarshal(j, &cache)
+	}
+
+	cache.Cache[t.region] = t.nodes
+
+	j, err := json.Marshal(cache)
 	if err != nil {
 		panic(err)
 	}
@@ -217,6 +254,28 @@ func lsNodesJson() (string, error) {
 	// if `tsh ls` has to re-login first then it returns an extra bit of
 	// text in front of the json so we need to remove that
 	return string(stripInvalidJSONPrefix(output)), nil
+}
+
+func getTshEvn(varName string) (string, error) {
+	cmd := exec.Command("tsh", "env")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+
+	tmp := string(output)
+	lines := strings.Fields(tmp)
+
+	for _, l := range lines {
+		items := strings.Split(l, "=")
+		if len(items) < 2 || varName != items[0] {
+			continue
+		}
+
+		return items[1], nil
+	}
+
+	return "", fmt.Errorf("%s not found in tsh env", varName)
 }
 
 type teleportItem struct {
