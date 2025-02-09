@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -114,6 +115,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.columnSel = 0
 			m.search.Prompt = "> "
 			m.columnSelMode = false
+			m.colFilters = map[int]string{}
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			// TODO: (willgorman) this should be only numbers up to the number of columns
 			// and not sure what to do if more than 9 columns
@@ -133,16 +135,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// env
 		case "d":
-			m.toggleColumnFilter(2, "dev")
+			if !m.searching {
+				m.toggleColumnFilter(2, "dev")
+			}
 		case "s":
-			m.toggleColumnFilter(2, "stg")
+			if !m.searching {
+				m.toggleColumnFilter(2, "stg")
+			}
 		case "p":
-			m.toggleColumnFilter(2, "ppd")
+			if !m.searching {
+				m.toggleColumnFilter(2, "ppd")
+			}
 			// Type
 		case "C":
-			m.toggleColumnFilter(5, "compute")
+			if !m.searching {
+				m.toggleColumnFilter(5, "compute")
+			}
 		case "P":
-			m.toggleColumnFilter(5, "platform")
+			if !m.searching {
+				m.toggleColumnFilter(5, "platform")
+			}
 
 		case "q":
 			if !m.searching {
@@ -602,6 +614,54 @@ func generateNodeCache(cfg *Config, tp Teleport) {
 	return
 }
 
+func DefaultKeyMap() table.KeyMap {
+	//const spacebar = " "
+	return table.KeyMap{
+		LineUp: key.NewBinding(
+			key.WithKeys("up", "k"),
+			key.WithHelp("↑/k", "up"),
+		),
+		LineDown: key.NewBinding(
+			key.WithKeys("down", "j"),
+			key.WithHelp("↓/j", "down"),
+		),
+		PageUp: key.NewBinding(
+			key.WithKeys("ctrl+b"),
+			key.WithHelp("ctrl+b", "page up"),
+		),
+		PageDown: key.NewBinding(
+			key.WithKeys("ctrl+f"),
+			key.WithHelp("ctrl+f", "page down"),
+		),
+		/*
+			PageUp: key.NewBinding(
+				key.WithKeys("b", "pgup"),
+				key.WithHelp("b/pgup", "page up"),
+			),
+			PageDown: key.NewBinding(
+				key.WithKeys("f", "pgdown", spacebar),
+				key.WithHelp("f/pgdn", "page down"),
+			),
+			HalfPageUp: key.NewBinding(
+				key.WithKeys("u", "ctrl+u"),
+				key.WithHelp("u", "½ page up"),
+			),
+			HalfPageDown: key.NewBinding(
+				key.WithKeys("d", "ctrl+d"),
+				key.WithHelp("d", "½ page down"),
+			),
+			GotoTop: key.NewBinding(
+				key.WithKeys("home", "g"),
+				key.WithHelp("g/home", "go to start"),
+			),
+			GotoBottom: key.NewBinding(
+				key.WithKeys("end", "G"),
+				key.WithHelp("G/end", "go to end"),
+			),
+		*/
+	}
+}
+
 func main() {
 	var configFile string
 	var connect string
@@ -658,6 +718,8 @@ func main() {
 		Background(lipgloss.Color("57")).
 		Bold(false)
 	t.SetStyles(s)
+
+	t.KeyMap = DefaultKeyMap()
 
 	search := textinput.New()
 	spin := spinner.New(
