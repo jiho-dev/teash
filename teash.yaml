@@ -1,5 +1,6 @@
 path: "/usr/local/bin"
-nodecachefile: "/Users/jiho.jung/bin/teash-node.json"
+  #nodecachefile: "/Users/jiho.jung/bin/teash-node.json"
+nodecachefile: "/home/jiho.jung/bin/teash-node.json"
 
 iterm2:
   badge:

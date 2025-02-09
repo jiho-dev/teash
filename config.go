@@ -25,7 +25,7 @@ type Iterm2Config struct {
 }
 
 type Config struct {
-	Path          string       `yaml:"path"`
+	Path          string       `yaml:"path"` // teleport path
 	NodeCacheFile string       `yaml:"nodecachefile"`
 	Iterm2        Iterm2Config `yaml:"iterm2"`
 }
