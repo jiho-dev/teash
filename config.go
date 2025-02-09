@@ -41,7 +41,12 @@ func fileExists(filename string) bool {
 
 func readConfig(cfgFile string) *Config {
 	if !fileExists(cfgFile) {
-		return nil
+		home := os.Getenv("HOME")
+
+		return &Config{
+			Path:          "/usr/local/bin",
+			NodeCacheFile: home + "/bin/teash-node.json",
+		}
 	}
 
 	buf, err := ioutil.ReadFile(cfgFile)
