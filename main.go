@@ -128,30 +128,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				//log.Println(litter.Sdump("WTF", m.headers))
 				m.search.Prompt = m.headers[col-1] + "> "
 			}
-		case "c":
+		case "C":
 			if !m.searching {
 				m.columnSelMode = true
 			}
 
 			// env
-		case "d":
+		case "D":
 			if !m.searching {
 				m.toggleColumnFilter(2, "dev")
 			}
-		case "s":
+		case "S":
 			if !m.searching {
 				m.toggleColumnFilter(2, "stg")
 			}
-		case "p":
+		case "P":
 			if !m.searching {
 				m.toggleColumnFilter(2, "ppd")
 			}
 			// Type
-		case "C":
+		case "c":
 			if !m.searching {
 				m.toggleColumnFilter(5, "compute")
 			}
-		case "P":
+		case "p":
 			if !m.searching {
 				m.toggleColumnFilter(5, "platform")
 			}
@@ -521,8 +521,8 @@ func (m model) helpView() string {
 
 	//help := "↑/↓: Navigate • /: Start search • q: Quit • c: Select column to search • Enter: ssh to selection\n"
 	help := "\n"
-	help += "  ↑/↓: Navigate • /: Start search • q: Quit • c: Select column to search • Enter: ssh to selection\n"
-	help += "  d/s/p: Toggle Env(dev/stg/ppd) • C/P: Toggle Type(compute/platform)\n"
+	help += "  ↑/↓: Navigate • /: Start search • q: Quit • C: Select column to search • Enter: ssh to selection\n"
+	help += "  D/S/P: Toggle Env(dev/stg/ppd) • c/p: Toggle Type(compute/platform)\n"
 
 	return helpStyle(help)
 }
