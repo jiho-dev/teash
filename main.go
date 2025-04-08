@@ -522,7 +522,7 @@ func (m model) helpView() string {
 	//help := "↑/↓: Navigate • /: Start search • q: Quit • c: Select column to search • Enter: ssh to selection\n"
 	help := "\n"
 	help += "  ↑/↓: Navigate • /: Start search • q: Quit • C: Select column to search • Enter: ssh to selection\n"
-	help += "  D/S/P: Toggle Env(dev/stg/ppd) • c/p: Toggle Type(compute/platform)\n"
+	help += "  D/S/P: Evn(dev/stg/ppd) • c/p: Type(compute/platform), ctr+r: refresh\n"
 
 	return helpStyle(help)
 }
