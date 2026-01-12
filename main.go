@@ -151,6 +151,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.searching {
 				m.toggleColumnFilter(5, "compute")
 			}
+		case "n":
+			if !m.searching {
+				m.toggleColumnFilter(5, "network")
+			}
 		case "p":
 			if !m.searching {
 				m.toggleColumnFilter(5, "platform")
