@@ -4,20 +4,58 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 )
 
 type tshWrapper struct {
-	nodes   Nodes
-	tshPath string
+	nodes         Nodes
+	tshPath       string
+	profile       string
+	nodeCacheFile string
+	selected      string
+	region        string
 }
 
-func NewTeleport() (Teleport, error) {
+type nodeCaches struct {
+	Cache map[string]Nodes // key: env name. ex) lab-eu, spc-kr, spc-us...
+}
+
+/*
+func (t *tshWrapper) GetCacheFileName() string {
+	var f string
+
+	if len(t.profile) < 1 {
+		return t.nodeCacheFile
+	}
+
+	tmp := strings.Split(t.nodeCacheFile, ".")
+	l := len(tmp)
+
+	if l > 1 {
+		f = strings.Join(tmp[0:l-1], ".")
+		f += "-" + t.profile + "." + tmp[l-1]
+	} else {
+		f = tmp[0] + "-" + t.profile + "." + "json"
+	}
+
+	return f
+}
+*/
+
+func NewTeleport(cfg *Config, selected string) (Teleport, error) {
+	if cfg.Path != "" {
+		path := os.Getenv("PATH")
+		path += ":" + cfg.Path
+		os.Setenv("PATH", path)
+	}
+
 	if demoMode := os.Getenv("TEASH_DEMO"); demoMode != "" {
 		sshPath, _ := exec.LookPath("ssh")
 		if sshPath == "" {
@@ -29,21 +67,39 @@ func NewTeleport() (Teleport, error) {
 	if tsh == "" {
 		return nil, errors.New("teleport `tsh` command not found")
 	}
+
+	tsh_proxy, err := getTshEvn("TELEPORT_PROXY")
+	if err != nil {
+		panic(err)
+
+	}
+
+	prefix := strings.Split(tsh_proxy, "-access")
+	if len(prefix) < 2 {
+		fmt.Printf("TELEPORT_PROXY is not vaild: %s\n", tsh_proxy)
+		panic(nil)
+	}
+
 	return &tshWrapper{
-		nodes:   Nodes{},
-		tshPath: tsh,
+		nodes:         Nodes{},
+		tshPath:       tsh,
+		nodeCacheFile: cfg.NodeCacheFile,
+		selected:      selected,
+		region:        prefix[0],
 	}, nil
 }
 
 func (t *tshWrapper) Connect(cmd []string) {
-	err := syscall.Exec(t.tshPath, cmd, os.Environ())
-	if err != nil {
-		panic(err)
-	}
+	exe := exec.Command(cmd[0], cmd[1:]...)
+	exe.Stdin = os.Stdin
+	exe.Stdout = os.Stdout
+	exe.Stderr = os.Stderr
+	_ = exe.Run()
 }
 
 func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
-	if len(t.nodes) == 0 || refresh {
+	if !refresh && t.GetNodesFromCache() == nil && len(t.nodes) > 0 {
+	} else {
 		data := []struct {
 			Kind     string `json:"kind"`
 			Metadata struct {
@@ -74,24 +130,124 @@ func (t *tshWrapper) GetNodes(refresh bool) (Nodes, error) {
 			if n.Kind != "node" {
 				continue
 			}
+
 			t.nodes = append(t.nodes, Node{
 				Labels:   n.Metadata.Labels,
 				Hostname: n.Spec.Hostname,
 				IP:       n.Spec.CmdLabels.Ip.Result,
 				OS:       n.Spec.CmdLabels.Os.Result,
+				Region:   n.Metadata.Labels["region"],
+				Env:      n.Metadata.Labels["env"],
+				NodeType: n.Metadata.Labels["category3"],
 			})
+
+			delete(n.Metadata.Labels, "region")
+			delete(n.Metadata.Labels, "env")
+			delete(n.Metadata.Labels, "category3")
+		}
+
+		t.SaveNodesToCache()
+	}
+
+	if t.selected != "" {
+		nodes := Nodes{}
+
+		for _, n := range t.nodes {
+			if n.Hostname == t.selected {
+				nodes = append(nodes, n)
+				break
+			}
+		}
+
+		if len(nodes) > 0 {
+			t.nodes = nodes
 		}
 	}
+
+	// sort them by Env, Type, Hostname
+	sort.Slice(t.nodes, func(i, j int) bool {
+		if t.nodes[i].Env != t.nodes[j].Env {
+			return t.nodes[i].Env < t.nodes[j].Env
+		}
+
+		if t.nodes[i].NodeType != t.nodes[j].NodeType {
+			return t.nodes[i].NodeType < t.nodes[j].NodeType
+		}
+
+		return t.nodes[i].Hostname < t.nodes[j].Hostname
+	})
+
 	return t.nodes, nil
+}
+
+func (t *tshWrapper) GetNodesFromCache() error {
+	//fname := t.GetCacheFileName()
+	fname := t.nodeCacheFile
+
+	if fname == "" {
+		return fmt.Errorf("no file")
+	}
+
+	var cache nodeCaches
+
+	j, _ := ioutil.ReadFile(fname)
+	if len(j) > 0 {
+		err := json.Unmarshal(j, &cache)
+		if err != nil {
+			return err
+		}
+	}
+
+	n, ok := cache.Cache[t.region]
+	if ok {
+		t.nodes = n
+	}
+
+	return nil
+}
+
+func (t *tshWrapper) SaveNodesToCache() {
+	//fname := t.GetCacheFileName()
+	fname := t.nodeCacheFile
+
+	if fname == "" {
+		fmt.Printf("Node cachefile name is not specified \n")
+		return
+	}
+
+	cache := nodeCaches{
+		Cache: map[string]Nodes{},
+	}
+
+	j, _ := ioutil.ReadFile(fname)
+	if len(j) > 0 {
+		json.Unmarshal(j, &cache)
+	}
+
+	cache.Cache[t.region] = t.nodes
+
+	j, err := json.Marshal(cache)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Write cachefile: %v \n", fname)
+	err = ioutil.WriteFile(fname, j, 0644)
+	if err != nil {
+		fmt.Printf("failed to write file: err=%v\n", err)
+	}
 }
 
 type Nodes []Node
 
 type Node struct {
-	Labels   map[string]string
+	Region   string
+	Env      string
 	Hostname string
 	IP       string
+	NodeType string
 	OS       string
+	Labels   map[string]string
 }
 
 func (t *tshWrapper) GetCluster() (string, error) {
@@ -120,6 +276,7 @@ func (t *tshWrapper) GetCluster() (string, error) {
 		return "", errors.New("no active cluster found, `tsh login` and try again")
 	}
 
+	t.profile = cluster
 	return cluster, nil
 }
 
@@ -132,6 +289,28 @@ func lsNodesJson() (string, error) {
 	// if `tsh ls` has to re-login first then it returns an extra bit of
 	// text in front of the json so we need to remove that
 	return string(stripInvalidJSONPrefix(output)), nil
+}
+
+func getTshEvn(varName string) (string, error) {
+	cmd := exec.Command("tsh", "env")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+
+	tmp := string(output)
+	lines := strings.Fields(tmp)
+
+	for _, l := range lines {
+		items := strings.Split(l, "=")
+		if len(items) < 2 || varName != items[0] {
+			continue
+		}
+
+		return items[1], nil
+	}
+
+	return "", fmt.Errorf("%s not found in tsh env", varName)
 }
 
 type teleportItem struct {
